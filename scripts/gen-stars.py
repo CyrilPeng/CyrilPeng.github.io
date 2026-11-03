@@ -12,6 +12,8 @@ import json
 import os
 import re
 import sys
+import time
+import urllib.error
 import urllib.request
 
 REPO = "CyrilPeng/venera-next"
@@ -24,16 +26,45 @@ MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-def fetch(url):
+USE_TOKEN = bool(TOKEN)
+
+
+def _request(url, with_token):
     headers = {
         "Accept": "application/vnd.github.star+json",
         "User-Agent": "cyrilpeng-site-generator",
     }
-    if TOKEN:
+    if with_token and TOKEN:
         headers["Authorization"] = "Bearer " + TOKEN
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.load(resp), resp.headers.get("Link", "")
+
+
+def fetch(url, attempts=3):
+    """带退避的重试。GITHUB_TOKEN 只对当前仓库有效，
+    在 CI 里读别的仓库会 403，这里自动退回匿名访问。"""
+    global USE_TOKEN
+    last = None
+    for i in range(attempts):
+        try:
+            return _request(url, USE_TOKEN)
+        except urllib.error.HTTPError as exc:
+            last = exc
+            if exc.code == 403 and USE_TOKEN:
+                USE_TOKEN = False          # 安装令牌读不了别的仓库，改用匿名
+                continue
+            if exc.code in (403, 429, 500, 502, 503, 504) and i < attempts - 1:
+                time.sleep(2 ** (i + 1))
+                continue
+            raise
+        except urllib.error.URLError as exc:
+            last = exc
+            if i < attempts - 1:
+                time.sleep(2 ** (i + 1))
+                continue
+            raise
+    raise last
 
 
 def collect_daily_counts():
@@ -146,7 +177,8 @@ def main():
         fh.write(svg)
 
     touched = sync_caption(series, total)
-    print(f"仓库 {REPO}：{total:,} 颗星，{len(series)} 天，{calls} 次请求")
+    mode = "带 token" if USE_TOKEN else "匿名"
+    print(f"仓库 {REPO}：{total:,} 颗星，{len(series)} 天，{calls} 次请求（{mode}）")
     print(f"stars.svg {'已更新' if svg != old else '无变化'}")
     if touched:
         print("文案已同步：" + "、".join(touched))

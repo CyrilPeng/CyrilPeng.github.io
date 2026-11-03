@@ -25,8 +25,11 @@ jobs:
           python-version: "3.12"
 
       - name: Regenerate star chart
+        # GITHUB_TOKEN 只对当前仓库有效，读不到 venera-next 的 API。
+        # 这里读一个可选 secret：没配置就走匿名（每小时 60 次，21 次够用），
+        # 以后想提高限额就加一个 PAT 存成 STAR_TOKEN。
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.STAR_TOKEN }}
         run: python scripts/gen-stars.py
 
       - name: Commit if changed
