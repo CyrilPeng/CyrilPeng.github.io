@@ -30,10 +30,21 @@ git add -A && git commit -m "..." && git push
 
 ## 星标曲线
 
-`assets/stars.svg` 由 `scripts/gen-stars.py` 生成，不要手改。脚本会翻完 stargazers 接口的所有分页，重绘曲线，并同步两个页面里的计数文案。
+`assets/stars.svg` 由 `scripts/gen-stars.py` 生成，**不要手改**。
+
+数据在 `data/stars.json`，格式是 `[["2026-06-09", 1], ...]` 的日期→累计数。曲线就是这条序列画出来的。
+
+两个模式：
 
 ```bash
-GH_TOKEN=$(gh auth token) python scripts/gen-stars.py
+python scripts/gen-stars.py                 # 追加今天的星标快照（CI 用这个）
+GH_TOKEN=$(gh auth token) python scripts/gen-stars.py   # 额外全量回填，历史更精确
 ```
 
-`.github/workflows/stars.yml` 每周一 10:00（北京时间）自动跑一次，有变化才提交。也可以到 Actions 页面手动触发。
+### 为什么要自己存历史
+
+`/repos/{owner}/{repo}/stargazers` 现在**强制要求认证**，而 Actions 自带的 `GITHUB_TOKEN` 只能访问当前仓库，读不了 `venera-next`。所以 CI 里只调公开的 `/repos/{owner}/{repo}` 拿当前总数，一天一个点地累积。
+
+历史起点（148 天）是用带 token 的本地回填灌进去的。如果以后想提高历史精度，本地带 token 跑一次即可。
+
+`.github/workflows/stars.yml` 每周一 10:00（北京时间）自动运行，有变化才提交；也可以到 Actions 页面手动触发。想改成每天，把 cron 改成 `0 2 * * *`。

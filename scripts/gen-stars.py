@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""抓取 VeneraNext 的星标时间序列，重绘 assets/stars.svg，并同步页面里的计数文案。
+"""维护 VeneraNext 的星标时间序列，重绘 assets/stars.svg，并同步页面里的计数文案。
+
+设计说明
+--------
+`/repos/{owner}/{repo}/stargazers` 现在强制要求认证，而 Actions 自带的
+GITHUB_TOKEN 只能访问当前仓库，读不了 venera-next。所以 CI 里只调公开的
+`/repos/{owner}/{repo}`（无需认证）拿当前总数，逐日累积到 data/stars.json，
+曲线由这份历史数据绘制。
+
+本地带 token 跑时会额外做一次全量回填，让历史精度更高。
 
 用法：
-    GH_TOKEN=xxx python scripts/gen-stars.py     # 没有 token 也能跑，只是限额低
-
-依赖：仅标准库。CI 里由 .github/workflows/stars.yml 每周调用。
+    python scripts/gen-stars.py                # 只追加今天的快照
+    GH_TOKEN=xxx python scripts/gen-stars.py   # 额外全量回填
 """
 
 import datetime as dt
@@ -18,6 +26,7 @@ import urllib.request
 
 REPO = "CyrilPeng/venera-next"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HISTORY = os.path.join(ROOT, "data", "stars.json")
 TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
 API = "https://api.github.com"
 
@@ -26,34 +35,18 @@ MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
-USE_TOKEN = bool(TOKEN)
-
-
-def _request(url, with_token):
-    headers = {
-        "Accept": "application/vnd.github.star+json",
-        "User-Agent": "cyrilpeng-site-generator",
-    }
-    if with_token and TOKEN:
+def api_get(url, accept="application/vnd.github+json", attempts=3):
+    headers = {"Accept": accept, "User-Agent": "cyrilpeng-site-generator"}
+    if TOKEN:
         headers["Authorization"] = "Bearer " + TOKEN
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.load(resp), resp.headers.get("Link", "")
-
-
-def fetch(url, attempts=3):
-    """带退避的重试。GITHUB_TOKEN 只对当前仓库有效，
-    在 CI 里读别的仓库会 403，这里自动退回匿名访问。"""
-    global USE_TOKEN
     last = None
     for i in range(attempts):
         try:
-            return _request(url, USE_TOKEN)
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.load(resp), resp.headers.get("Link", "")
         except urllib.error.HTTPError as exc:
             last = exc
-            if exc.code == 403 and USE_TOKEN:
-                USE_TOKEN = False          # 安装令牌读不了别的仓库，改用匿名
-                continue
             if exc.code in (403, 429, 500, 502, 503, 504) and i < attempts - 1:
                 time.sleep(2 ** (i + 1))
                 continue
@@ -67,37 +60,54 @@ def fetch(url, attempts=3):
     raise last
 
 
-def collect_daily_counts():
-    """翻完所有分页，返回 {date: 当天新增星标数} 和请求次数。"""
-    per_day = {}
-    url = f"{API}/repos/{REPO}/stargazers?per_page=100&page=1"
-    calls = 0
+def load_history():
+    if not os.path.exists(HISTORY):
+        return {}
+    with open(HISTORY, encoding="utf-8") as fh:
+        return {dt.date.fromisoformat(d): int(v) for d, v in json.load(fh)}
+
+
+def save_history(series):
+    os.makedirs(os.path.dirname(HISTORY), exist_ok=True)
+    payload = [[d.isoformat(), v] for d, v in series]
+    with open(HISTORY, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, ensure_ascii=False, separators=(",", ":"))
+
+
+def backfill(history):
+    """带 token 时翻完 stargazers 全部分页，按真实时间点重建历史。"""
+    per_day, url, calls = {}, f"{API}/repos/{REPO}/stargazers?per_page=100&page=1", 0
     while url:
-        batch, link = fetch(url)
+        batch, link = api_get(url, accept="application/vnd.github.star+json")
         calls += 1
         for item in batch:
             ts = item.get("starred_at")
             if ts:
-                day = ts[:10]
-                per_day[day] = per_day.get(day, 0) + 1
+                per_day[ts[:10]] = per_day.get(ts[:10], 0) + 1
         nxt = re.search(r'<([^>]+)>;\s*rel="next"', link)
         url = nxt.group(1) if nxt else None
-    return per_day, calls
 
+    if not per_day:
+        return history, calls
 
-def build_series(per_day):
-    """把稀疏的按天数据补齐成连续日累计序列。"""
-    days = sorted(per_day)
-    if not days:
-        return [], 0
-    start = dt.date.fromisoformat(days[0])
-    end = dt.date.fromisoformat(days[-1])
-    series, total, cursor = [], 0, start
+    merged, total, cursor = {}, 0, dt.date.fromisoformat(min(per_day))
+    end = dt.date.fromisoformat(max(per_day))
     while cursor <= end:
         total += per_day.get(cursor.isoformat(), 0)
-        series.append((cursor, total))
+        merged[cursor] = total
         cursor += dt.timedelta(days=1)
-    return series, total
+    return merged, calls
+
+
+def append_today(history):
+    """用公开接口读当前总数（无需认证），写进今天这一格。"""
+    payload, _ = api_get(f"{API}/repos/{REPO}")
+    total = payload["stargazers_count"]
+    today = dt.date.today()
+    if history.get(today) == total:
+        return history, total, False
+    history[today] = total
+    return history, total, True
 
 
 def render_svg(series, total):
@@ -130,17 +140,14 @@ def render_svg(series, total):
 
 
 def sync_caption(series, total):
-    """把 HTML 里的计数文案和 alt 换成最新值，避免和页面上的实时数字打架。"""
     start = series[0][0]
-    zh_caption = f"{start.year} 年 {start.month} 月至今 · 累计 {total:,} ★"
-    en_caption = f"{MONTHS_EN[start.month - 1]} {start.year} – now · {total:,} ★"
-    touched = []
-
+    zh = f"{start.year} 年 {start.month} 月至今 · 累计 {total:,} ★"
+    en = f"{MONTHS_EN[start.month - 1]} {start.year} – now · {total:,} ★"
     targets = {
-        "index.html": (zh_caption, f"VeneraNext 累计星标增长曲线，{zh_caption.replace(' · ', '，')}"),
-        "en.html": (en_caption, f"VeneraNext cumulative stars, {en_caption}"),
+        "index.html": (zh, "VeneraNext 累计星标增长曲线，" + zh.replace(" · ", "，")),
+        "en.html": (en, "VeneraNext cumulative stars, " + en),
     }
-
+    touched = []
     for name, (caption, alt) in targets.items():
         path = os.path.join(ROOT, name)
         if not os.path.exists(path):
@@ -156,30 +163,37 @@ def sync_caption(series, total):
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(html)
             touched.append(name)
-
     return touched
 
 
 def main():
-    per_day, calls = collect_daily_counts()
-    series, total = build_series(per_day)
-    if total == 0:
-        print("没有取到任何星标数据，放弃。", file=sys.stderr)
+    history = load_history()
+    note = "仅追加今日快照"
+
+    if TOKEN:
+        try:
+            history, calls = backfill(history)
+            note = f"全量回填 {calls} 次请求"
+        except urllib.error.HTTPError as exc:
+            note = f"回填失败（HTTP {exc.code}），仅追加今日快照"
+
+    history, total, changed = append_today(history)
+    series = sorted(history.items())
+    if not series:
+        print("没有历史数据，放弃。", file=sys.stderr)
         return 1
 
     svg_path = os.path.join(ROOT, "assets", "stars.svg")
     svg = render_svg(series, total)
-    old = ""
-    if os.path.exists(svg_path):
-        with open(svg_path, encoding="utf-8") as fh:
-            old = fh.read()
+    old = open(svg_path, encoding="utf-8").read() if os.path.exists(svg_path) else ""
     with open(svg_path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(svg)
 
-    touched = sync_caption(series, total)
-    mode = "带 token" if USE_TOKEN else "匿名"
-    print(f"仓库 {REPO}：{total:,} 颗星，{len(series)} 天，{calls} 次请求（{mode}）")
-    print(f"stars.svg {'已更新' if svg != old else '无变化'}")
+    save_history(series)
+    touched = sync_caption(series, series[-1][1])
+
+    print(f"{REPO}：{total:,} 颗星 · {len(series)} 天 · {note}")
+    print(f"stars.svg {'已更新' if svg != old else '无变化'}；今日快照 {'已写入' if changed else '无变化'}")
     if touched:
         print("文案已同步：" + "、".join(touched))
     return 0
