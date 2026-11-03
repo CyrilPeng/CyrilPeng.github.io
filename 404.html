@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>页面不存在 · 某不科学的高数</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/icons/sparkle.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<script>try{var t=localStorage.getItem('cp-theme');document.documentElement.setAttribute('data-theme',t||'auto');}catch(e){}</script>
+<style>
+  .notfound {
+    min-height: 68vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .code {
+    font: 700 clamp(64px, 16vw, 112px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: -.04em;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0;
+  }
+  .notfound h1 { font-size: 1.2rem; margin: 6px 0 0; }
+  .notfound p { margin: 0; color: var(--muted); }
+  .notfound .links { margin-top: 26px; }
+</style>
+</head>
+<body>
+
+<main class="wrap">
+  <div class="notfound">
+    <p class="code">404</p>
+    <h1>这个页脚踩空了</h1>
+    <p>地址可能打错了，或者那个项目已经被我改名 / 合并了。</p>
+    <nav class="links" aria-label="返回">
+      <a class="btn primary" href="https://cyrilpeng.github.io/">回个人主页</a>
+      <a class="btn ghost" href="https://github.com/CyrilPeng">去 GitHub</a>
+    </nav>
+  </div>
+</main>
+
+</body>
+</html>

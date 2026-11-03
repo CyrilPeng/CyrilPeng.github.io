@@ -1,3 +1,5 @@
+/* ---------- 主题变量 ---------- */
+
 :root {
   --bg: #0d1117;
   --surface: #161b22;
@@ -10,10 +12,11 @@
   --accent-2: #ec4899;
   --pill: rgba(139, 92, 246, .14);
   --shadow: 0 1px 2px rgba(1, 4, 9, .4);
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --bg: #ffffff;
     --surface: #ffffff;
     --surface-2: #f6f8fa;
@@ -23,8 +26,24 @@
     --border: #d1d9e0;
     --pill: rgba(139, 92, 246, .10);
     --shadow: 0 1px 3px rgba(31, 35, 40, .08);
+    color-scheme: light;
   }
 }
+
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f8fa;
+  --fg: #1f2328;
+  --fg-soft: #32383f;
+  --muted: #59636e;
+  --border: #d1d9e0;
+  --pill: rgba(139, 92, 246, .10);
+  --shadow: 0 1px 3px rgba(31, 35, 40, .08);
+  color-scheme: light;
+}
+
+/* ---------- 基础 ---------- */
 
 * { box-sizing: border-box; }
 
@@ -38,11 +57,58 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+a { color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
 .wrap {
   max-width: 780px;
   margin: 0 auto;
-  padding: 72px 24px 64px;
+  padding: 26px 24px 64px;
 }
+
+/* ---------- 工具条 ---------- */
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+
+.tool:hover { color: var(--fg); border-color: var(--accent); }
+
+.tool svg { display: block; }
+
+.tool .ico { display: none; }
+
+html[data-theme="light"] .tool .ico-light,
+html[data-theme="dark"] .tool .ico-dark,
+html[data-theme="auto"] .tool .ico-auto,
+html:not([data-theme]) .tool .ico-auto { display: block; }
 
 /* ---------- hero ---------- */
 
@@ -126,7 +192,7 @@ body {
 
 .btn.lg { padding: 12px 26px; font-size: .95rem; }
 
-/* ---------- sections ---------- */
+/* ---------- 区块 ---------- */
 
 .section { margin-top: 56px; }
 
@@ -152,18 +218,12 @@ body {
 
 .facts strong { color: var(--fg); }
 
-/* ---------- project cards ---------- */
+/* ---------- 项目卡片 ---------- */
 
 .cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-}
-
-@media (max-width: 640px) {
-  .cards { grid-template-columns: 1fr; }
-  .wrap { padding-top: 48px; }
-  .hero h1 { font-size: 1.65rem; }
 }
 
 .card {
@@ -222,7 +282,32 @@ body {
 }
 
 @media (prefers-color-scheme: light) {
-  .pill { color: #7c3aed; }
+  :root:not([data-theme="dark"]) .pill { color: #7c3aed; }
+}
+
+:root[data-theme="light"] .pill { color: #7c3aed; }
+
+/* 主卡：VeneraNext 跨两列并带星标曲线 */
+
+.card.featured {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 28px;
+  align-items: center;
+  padding: 22px;
+}
+
+.chart { margin: 0; min-width: 0; }
+
+.chart img { display: block; width: 100%; height: auto; }
+
+.chart figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: .74rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .more {
@@ -255,10 +340,9 @@ body {
   color: var(--fg-soft);
 }
 
-/* ---------- cta ---------- */
+/* ---------- CTA ---------- */
 
 .cta {
-  position: relative;
   padding: 34px 24px;
   border-radius: 18px;
   border: 1px solid transparent;
@@ -280,7 +364,7 @@ body {
   font-size: .9rem;
 }
 
-/* ---------- footer ---------- */
+/* ---------- 页脚 ---------- */
 
 footer {
   margin-top: 64px;
@@ -296,9 +380,23 @@ footer p {
   justify-content: center;
   gap: 7px;
   margin: 0 0 6px;
+  flex-wrap: wrap;
 }
 
 .muted { color: var(--muted); font-size: .8rem; }
+
+/* ---------- 响应式 ---------- */
+
+@media (max-width: 720px) {
+  .card.featured { grid-template-columns: 1fr; }
+  .chart figcaption { text-align: left; }
+}
+
+@media (max-width: 640px) {
+  .cards { grid-template-columns: 1fr; }
+  .wrap { padding: 20px 20px 48px; }
+  .hero h1 { font-size: 1.65rem; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
